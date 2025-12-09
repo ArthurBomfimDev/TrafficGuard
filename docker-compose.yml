@@ -5,23 +5,23 @@ services:
     image: rabbitmq:3-management
     container_name: trafficguard-rabbit
     ports:
-      - "5672:5672"   # Porta para o código (Python/C#)
-      - "15672:15672" # Porta para o Painel Visual (Navegador)
+      - "5672:5672"
+      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin123
 
   postgres:
-    image: postgres:latest
+    image: postgres:17
     container_name: trafficguard-db
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: TrafficGuardDb
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql  
 
 volumes:
   postgres-data:

@@ -15,7 +15,6 @@ def conectar_rabbitmq():
     try:
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
-        # Cria a fila se ela não existir (Durable = não perde mensagens se cair a luz)
         channel.queue_declare(queue=QUEUE_NAME, durable=True)
         print(f"[*] Conectado ao RabbitMQ na fila '{QUEUE_NAME}'")
         return connection, channel
@@ -31,9 +30,7 @@ def gerar_dados_radar():
     dados = {
         "sensor_id": f"RADAR-{random.randint(100, 999)}",
         "data_hora": datetime.now().isoformat(),
-        # Gera uma placa aleatória tipo ABC-1234
         "placa": f"{random.choice(placas_letras)}-{random.randint(1000, 9999)}",
-        # Velocidade simulada: maioria normal, alguns apressadinhos
         "velocidade": random.choices([40, 60, 55, 65, 90, 110], weights=[20, 40, 20, 10, 5, 5])[0],
         "via": "Av. Sampaio Vidal"
     }
@@ -46,23 +43,20 @@ def iniciar_simulacao():
     
     try:
         while True:
-            # 1. Gera o dado
             infracao = gerar_dados_radar()
             mensagem_json = json.dumps(infracao)
             
-            # 2. Publica na fila
             channel.basic_publish(
                 exchange='',
                 routing_key=QUEUE_NAME,
                 body=mensagem_json,
                 properties=pika.BasicProperties(
-                    delivery_mode=2,  # Mensagem persistente (salva em disco)
+                    delivery_mode=2,  
                 )
             )
             
             print(f"[x] Enviado: {infracao['placa']} | {infracao['velocidade']} km/h")
             
-            # Simula o tempo entre um carro e outro passar (0.5 a 2 segundos)
             time.sleep(random.uniform(0.5, 2.0))
             
     except KeyboardInterrupt:

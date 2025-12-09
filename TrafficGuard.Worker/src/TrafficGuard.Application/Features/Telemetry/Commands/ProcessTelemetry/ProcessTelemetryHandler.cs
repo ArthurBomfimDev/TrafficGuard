@@ -12,24 +12,26 @@ public class ProcessTelemetryHandler : IRequestHandler<ProcessTelemetryCommand, 
     private readonly IViolationRepository _repository;
     private readonly IValidator<ProcessTelemetryCommand> _validator;
     private readonly ILogger<ProcessTelemetryHandler> _logger;
+    private readonly IViolationReportGenerator _reportGenerator;
 
     private const int CURRENT_SPEED_LIMIT = 60;
 
     public ProcessTelemetryHandler(
         IViolationRepository repository,
         IValidator<ProcessTelemetryCommand> validator,
-        ILogger<ProcessTelemetryHandler> logger)
+        ILogger<ProcessTelemetryHandler> logger,
+        IViolationReportGenerator reportGenerator) 
     {
         _repository = repository;
         _validator = validator;
         _logger = logger;
+        _reportGenerator = reportGenerator; 
     }
 
     public async Task<bool> Handle(ProcessTelemetryCommand request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Processing telemetry: {Plate} at {Speed}km/h", request.LicensePlate, request.Speed);
 
-        // 1. Validação de Entrada (Fail Fast)
         var validationResult = await _validator.ValidateAsync(request, cancellationToken);
         if (!validationResult.IsValid)
         {
@@ -37,22 +39,22 @@ public class ProcessTelemetryHandler : IRequestHandler<ProcessTelemetryCommand, 
             {
                 _logger.LogWarning("Validation Failed: {Error}", error.ErrorMessage);
             }
-            return false; // Dados inválidos, descarta.
+            return false; 
         }
 
         try
         {
-            // 2. Chama a Factory do Domínio (Regra de Negócio Pura)
-            // Se a velocidade for baixa, o Register lança DomainException
-            var violation = TrafficViolation.Register(
+            var violation = TrafficGuard.Domain.Entities.TrafficViolation.Register(
                 request.LicensePlate,
                 request.Speed,
                 CURRENT_SPEED_LIMIT,
                 request.Timestamp
             );
 
-            // 3. Persistência
             await _repository.SaveAsync(violation);
+
+            var pdfPath = _reportGenerator.GenerateFineNotice(violation);
+            _logger.LogInformation("PDF Generated successfully: {Path}", pdfPath);
 
             _logger.LogInformation("VIOLATION CONFIRMED! Severity: {Severity} | Fine: {Fine}",
                 violation.Severity, violation.FineAmount);
@@ -61,16 +63,14 @@ public class ProcessTelemetryHandler : IRequestHandler<ProcessTelemetryCommand, 
         }
         catch (DomainException ex)
         {
-            // Isso NÃO é um erro de sistema. É uma regra de negócio agindo.
-            // Ex: Carro dentro do limite de velocidade.
+
             _logger.LogInformation("Telemetry ignored: {Reason}", ex.Message);
-            return true; // Processado com sucesso (apenas não gerou multa)
+            return true; 
         }
         catch (Exception ex)
         {
-            // Isso É um erro de sistema (banco caiu, etc).
             _logger.LogError(ex, "Critical error processing telemetry");
-            throw; // Relança para o RabbitMQ tentar de novo (Nack)
+            throw; 
         }
     }
 }
